@@ -7,7 +7,7 @@ FCFLAGS  = -Wall -pedantic -O3
 
 OBJS = parametersmod.o      \
 			 utilitiesmod.o       \
-			 newsplinemod_v2.o    \
+			 newsplinemod_v3.o    \
 			 output_daily_final.o
 
 .SUFFIXES: .o .f90 .f .mod

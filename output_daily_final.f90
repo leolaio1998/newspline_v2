@@ -1,7 +1,7 @@
 program output_daily_final
 
 use parametersmod
-use newsplinemod_v2,   only : newspline_v2
+use newsplinemod_v3,   only : newspline_v3
 
 implicit none
 
@@ -12,7 +12,10 @@ integer(i4), dimension(38) :: nk
 real(sp), dimension(38)             :: temp
 real(sp), dimension(:), allocatable :: daydata
 
-integer(i4)  :: i, summ
+integer(i4)  :: i
+integer(i4)  :: j
+integer(i4)  :: n
+integer(i4)  :: summ
 character(6) :: header
 
 !------
@@ -47,13 +50,22 @@ temp(38)   = temp_C(36)
 
 !---
 ! Interpolation without any limit options
-call newspline_v2(temp, nk, daydata)
+
+call newspline_v3(temp, nk, daydata)
 
 !---
-! Write 36 months (1096 days) of daily values
-do i = 32, summ-31
 
-  write(*,*) daydata(i)
+n = 32
+
+do i = 2, 37
+
+  do j = 1, nk(i)
+
+    write(*,*) temp(i), daydata(n)
+
+    n = n + 1
+
+  end do
 
 end do
 

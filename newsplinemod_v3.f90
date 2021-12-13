@@ -1,4 +1,4 @@
-module newsplinemod_v2
+module newsplinemod_v3
 
 ! this is newspline, a fast, means-preserving spline for interval data (v2.0)
 ! Leo O Lai and Jed O. Kaplan
@@ -9,7 +9,7 @@ use utilitiesmod,  only : matsol,findloc
 
 implicit none
 
-public  :: newspline_v2       ! Newspline subroutine with all optional bounded adjustment schemes (version 2.0)
+public  :: newspline_v3       ! Newspline subroutine with all optional bounded adjustment schemes (version 2.0)
 
 private :: alim_adjust        ! Bounded interpolation adjustment scheme for absolute limit (i.e., bound tolerance)
 private :: plim_adjust        ! Bounded interpolation adjustmnet scheme for percentage limit (relative to each interval individually)
@@ -22,7 +22,7 @@ contains
 !------------------------------------------------------------------------------------------------------------------
 !------------------------------------------------------------------------------------------------------------------
 
-subroutine newspline_v2(monthdata,nk,daydata,alim,llim,ulim,plim,n_adjust)
+subroutine newspline_v3(monthdata,nk,daydata,alim,llim,ulim,plim,n_adjust)
 
 implicit none
 
@@ -55,6 +55,7 @@ real(sp), dimension(:), allocatable :: m_cont
 real(sp) :: H_00, H_10, H_01, H_11
 real(sp) :: G_00, G_10, G_01, G_11
 real(sp) :: u
+real(sp) :: del
 
 integer :: len
 integer :: len_cont
@@ -91,11 +92,13 @@ end do
 allocate(mat(len,len))
 allocate(solution(len))
 
-!---
+! ====================
+! Version 3 amendements - fixed G_00 integral u^4 term sign from '-' to '+'
+! ====================
 
 u = 1.
 
-G_00 = u - (u**3) - (u**4) / 2.
+G_00 = u - (u**3) + (u**4) / 2.
 G_10 = (u**2) * (3.*(u**2) - 8.*u + 6.) / 12.
 G_01 = (u**3) * (1. - u / 2.)
 G_11 = (u**3) * (3.*u - 4.) / 12.
@@ -104,12 +107,19 @@ G_11 = (u**3) * (3.*u - 4.) / 12.
 
 mat = 0.
 
+! Construct matrix coefficients and solution array
+
+! ====================
+! Version 3 amendements - elimited '+ 1.' terms in tridiagonal coefficients and solution array after new equation derivation
+! ====================
+
 ! Consider two "buffer mid-CPs" outside of first and last interval
-mat(1,1) = 0.5 * G_10 + G_01 + G_00 - 0.5 * G_11 + 1.
+
+mat(1,1) = 0.5 * G_10 + G_01 + G_00 - 0.5 * G_11
 mat(1,2) = 0.5 * G_11
 
 mat(len,len-1) = -0.5 * G_10
-mat(len,len)   = 0.5 * G_10 + G_01 + G_00 - 0.5 * G_11 + 1.
+mat(len,len)   = 0.5 * G_10 + G_01 + G_00 - 0.5 * G_11
 
 
 n = 1
@@ -117,7 +127,7 @@ do i = 2, (len-1)
 
   mat(i,n)   = -0.5 * G_10
 
-  mat(i,n+1) = 0.5 * G_10 + G_01 + G_00 - 0.5 * G_11 + 1.
+  mat(i,n+1) = G_00 + G_01 + 0.5 * G_10 - 0.5 * G_11
 
   mat(i,n+2) = 0.5 * G_11
 
@@ -127,21 +137,24 @@ end do
 
 !---
 
-solution(1)   = 2. * monthdata(1) - swc(1) * G_00 - 0.5 * (swc(2) - swc(1)) * G_11 - 0.5 * &
-                (swc(2) - swc(1)) * G_10 - swc(2) * G_01 - swc(1)
+solution(1)   = 2 * monthdata(1) - &
+                (G_00 - 0.5 * G_10 - 0.5 * G_11) * swc(1) - &
+                (G_01 + 0.5 * G_10 + 0.5 * G_11) * swc(2)
 
 solution(1)   = solution(1) + 0.5 * G_10 * monthdata(1)
 
-solution(len) =  2. * monthdata(len) - swc(len) * G_00 - 0.5 * (swc(len+1) - swc(len)) * G_11 - &
-                0.5 * (swc(len+1) - swc(len)) * G_10 - swc(len+1) * G_01 - swc(len)
+solution(len) = 2 * monthdata(len) - &
+                (G_00 - 0.5 * G_10 - 0.5 * G_11) * swc(len) - &
+                (G_01 + 0.5 * G_10 + 0.5 * G_11) * swc(len+1)
 
 solution(len) = solution(len) - 0.5 * G_11 * monthdata(len)
 
 
 do i = 2, (len-1)
 
-  solution(i) = 2. * monthdata(i) - swc(i) * G_00 - 0.5 * (swc(i+1) - swc(i)) * G_11 - 0.5 * &
-                (swc(i+1) - swc(i)) * G_10 - swc(i+1) * G_01 - swc(i)
+  solution(i) = 2 * monthdata(i) - &
+                (G_00 - 0.5 * G_10 - 0.5 * G_11) * swc(i) - &
+                (G_01 + 0.5 * G_10 + 0.5 * G_11) * swc(i+1)
 
 end do
 
@@ -178,6 +191,7 @@ end do
 
 !-------------------------------------------------------------------------------
 ! Construct the spline for daily values based on all_cont
+
 len_cont = size(all_cont)
 
 allocate(d_cont(len_cont-1))
@@ -193,7 +207,7 @@ end do
 
 do i = 1, (len_cont-2)
 
-  m_cont(i) = (d_cont(i) + d_cont(i+1)) / 2
+  m_cont(i) = (d_cont(i) + d_cont(i+1))
 
 end do
 
@@ -217,24 +231,22 @@ do i = 1, (len_cont-1)
 
 end do
 
-!---
-
-do i = 1, (len_cont-2)
-
-  if (m_cont(i) /= 0.) m_cont(i) = (d_cont(i) + d_cont(i+1)) / 2
-
-end do
-
 
 !-------------------------------------------------------------------------------
 ! Find discrete daily values on the continuous function (i.e., series of u values in Hermite functions)
 
+! ====================
+! Version 3 amendements - include delta = 1/2 here instead of m_cont above to be consistent with equation in manuscript
+! ====================
+
+del = 0.5
+
 n = 1
 k = 0
 
-do i = 1, len !outer loop start, for all monthly intervals N
+do i = 1, len ! Outer loop start, for all monthly intervals N
 
-  if(mod(nk(i),2) == 0) then !seperate into even or odd months, starting with EVEN
+  if(mod(nk(i),2) == 0) then ! Seperate into even or odd months, starting with EVEN
 
     u = 1. / nk(i)
 
@@ -245,7 +257,7 @@ do i = 1, len !outer loop start, for all monthly intervals N
       H_10 = u * (u - 1) * (u - 1)
       H_11 = (u**2) * (u - 1)
 
-      daydata(n) = all_cont(k+1) * H_00 + m_cont(k) * H_10 + all_cont(k+2) * H_01 + m_cont(k+1) * H_11
+      daydata(n) = all_cont(k+1) * H_00 + del * m_cont(k) * H_10 + all_cont(k+2) * H_01 + del * m_cont(k+1) * H_11
 
       u = u + (2. / nk(i))
 
@@ -264,7 +276,7 @@ do i = 1, len !outer loop start, for all monthly intervals N
       H_10 = u * (u - 1) * (u - 1)
       H_11 = (u**2) * (u - 1)
 
-      daydata(n) = all_cont(k+2) * H_00 + m_cont(k+1) * H_10 + all_cont(k+3) * H_01 + m_cont(k+2) * H_11
+      daydata(n) = all_cont(k+2) * H_00 + del * m_cont(k+1) * H_10 + all_cont(k+3) * H_01 + del * m_cont(k+2) * H_11
 
       u = u + (2. / nk(i))
 
@@ -283,7 +295,7 @@ do i = 1, len !outer loop start, for all monthly intervals N
       H_10 = u * (u - 1) * (u - 1)
       H_11 = (u**2) * (u - 1)
 
-      daydata(n) = all_cont(k+1) * H_00 + m_cont(k) * H_10 + all_cont(k+2) * H_01 + m_cont(k+1) * H_11
+      daydata(n) = all_cont(k+1) * H_00 + del * m_cont(k) * H_10 + all_cont(k+2) * H_01 + del * m_cont(k+1) * H_11
 
       u = u + (2. / nk(i))
 
@@ -302,7 +314,7 @@ do i = 1, len !outer loop start, for all monthly intervals N
       H_10 = u * (u - 1) * (u - 1)
       H_11 = (u**2) * (u - 1)
 
-      daydata(n) = all_cont(k+2) * H_00 + m_cont(k+1) * H_10 + all_cont(k+3) * H_01 + m_cont(k+2) * H_11
+      daydata(n) = all_cont(k+2) * H_00 + del * m_cont(k+1) * H_10 + all_cont(k+3) * H_01 + del * m_cont(k+2) * H_11
 
       u = u + (2. / nk(i))
 
@@ -314,18 +326,19 @@ do i = 1, len !outer loop start, for all monthly intervals N
 
   k = k + 2
 
-end do !end of outer loop
+end do ! End of outer loop
 
 
 !-------------------------------------------------------------------------------
 ! Call bounded interpolation adjustment scheme if optional arguments are present
+
 if (present(llim)) call llim_adjust(llim,monthdata,nk,all_cont,daydata)
 if (present(ulim)) call ulim_adjust(ulim,monthdata,nk,all_cont,daydata)
 if (present(alim)) call alim_adjust(alim,monthdata,nk,all_cont,daydata,n_adjust)
 if (present(plim)) call plim_adjust(plim,monthdata,nk,all_cont,daydata)
 
 
-end subroutine newspline_v2
+end subroutine newspline_v3
 
 !------------------------------------------------------------------------------------------------------------------
 !------------------------------------------------------------------------------------------------------------------
@@ -1015,4 +1028,4 @@ end subroutine llim_adjust
 
 !------------------------------------------------------------------------------------------------------------------
 
-end module newsplinemod_v2
+end module newsplinemod_v3
